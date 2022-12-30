@@ -24,3 +24,6 @@ def training():
 @app.route("/inference")
 def inference():
     return "Inference complete!"
+
+if __name__ == '__main__':
+    app.run()
