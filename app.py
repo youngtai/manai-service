@@ -21,9 +21,10 @@ def file_upload():
 def training():
     return "Training started!"
 
-@app.route("/inference")
+@app.route("/inference", methods=['POST'])
 def inference():
-    return "Inference complete!"
+    image_prompt = request.get_data(as_text=True)
+    return f'Images created for "{image_prompt}"'
 
 if __name__ == '__main__':
     app.run()
