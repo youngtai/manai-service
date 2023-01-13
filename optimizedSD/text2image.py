@@ -1,4 +1,4 @@
-import argparse, os, re
+import os, re
 import torch
 import numpy as np
 from random import randint
@@ -7,16 +7,15 @@ from PIL import Image
 from tqdm import tqdm, trange
 from itertools import islice
 from einops import rearrange
-from torchvision.utils import make_grid
 import time
 from pytorch_lightning import seed_everything
 from torch import autocast
 from contextlib import contextmanager, nullcontext
 from ldm.util import instantiate_from_config
-from optimUtils import split_weighted_subprompts, logger
-from transformers import logging
+from optimUtils import split_weighted_subprompts
+# from transformers import logging
 # from samplers import CompVisDenoiser
-logging.set_verbosity_error()
+# logging.set_verbosity_error()
 
 PRECISION = {'full', 'autocast'}
 FORMATS = {'png', 'jpg'}
