@@ -1,4 +1,5 @@
 from flask import Flask, request
+from optimizedSD.text2image import do_inference
 from werkzeug.utils import secure_filename
 import zipfile
 from flask_cors import CORS
@@ -24,7 +25,9 @@ def training():
 @app.route("/inference", methods=['POST'])
 def inference():
     image_prompt = request.get_data(as_text=True)
-    return f'Images created for "{image_prompt}"'
+    generated_images = do_inference(image_prompt)
+    print(f'Images created for "{image_prompt}"')
+    return generated_images
 
 if __name__ == '__main__':
     app.run()

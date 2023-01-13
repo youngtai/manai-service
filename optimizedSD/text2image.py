@@ -64,8 +64,9 @@ def load_model_from_config(ckpt, verbose=False):
     return sd
 
 
-def do_inference():
+def do_inference(prompt):
     tic = time.time()
+    OPTIONS['prompt'] = prompt
     os.makedirs(OPTIONS['outdir'], exist_ok=True)
     outpath = OPTIONS['outdir']
     grid_count = len(os.listdir(outpath)) - 1
@@ -151,6 +152,8 @@ def do_inference():
     else:
         precision_scope = nullcontext
 
+    generated_images = []
+
     seeds = ""
     with torch.no_grad():
 
@@ -218,9 +221,10 @@ def do_inference():
                         x_samples_ddim = modelFS.decode_first_stage(samples_ddim[i].unsqueeze(0))
                         x_sample = torch.clamp((x_samples_ddim + 1.0) / 2.0, min=0.0, max=1.0)
                         x_sample = 255.0 * rearrange(x_sample[0].cpu().numpy(), "c h w -> h w c")
-                        Image.fromarray(x_sample.astype(np.uint8)).save(
-                            os.path.join(sample_path, "seed_" + str(OPTIONS['seed']) + "_" + f"{base_count:05}.{OPTIONS['format']}")
-                        )
+                        save_path = os.path.join(sample_path, "seed_" + str(OPTIONS['seed']) + "_" + f"{base_count:05}.{OPTIONS['format']}")
+                        image = Image.fromarray(x_sample.astype(np.uint8))
+                        generated_images.append(image)
+                        image.save(save_path) # TODO Remove this unless using locally
                         seeds += str(OPTIONS['seed']) + ","
                         OPTIONS['seed'] += 1
                         base_count += 1
@@ -245,3 +249,5 @@ def do_inference():
             + seeds[:-1]
         ).format(time_taken)
     )
+
+    return generated_images
