@@ -21,7 +21,7 @@ PRECISION = {'full', 'autocast'}
 FORMATS = {'png', 'jpg'}
 SAMPLERS = {'ddim', 'plms','heun', 'euler', 'euler_a', 'dpm2', 'dpm2_a', 'lms'}
 CONFIG = 'optimizedSD/v1-inference.yaml'
-BASE_CKPT_PATH = 'models/ldm/stable-diffusion-v1/model.ckpt'
+BASE_CKPT_PATH = '/home/youngtai/dev/models/sd-v1-4-full-ema.ckpt' # TODO Change to something generic for remote machines
 OPTIONS = {
     'prompt': None,
     'outdir': 'outputs/text2image-samples',
