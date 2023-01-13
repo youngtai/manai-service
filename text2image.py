@@ -67,18 +67,18 @@ def load_model_from_config(ckpt, verbose=False):
 
 def do_inference():
     tic = time.time()
-    os.makedirs(opt.outdir, exist_ok=True)
-    outpath = opt.outdir
+    os.makedirs(OPTIONS['outdir'], exist_ok=True)
+    outpath = OPTIONS['outdir']
     grid_count = len(os.listdir(outpath)) - 1
 
-    if opt.seed == None:
-        opt.seed = randint(0, 1000000)
-    seed_everything(opt.seed)
+    if OPTIONS['seed'] == None:
+        OPTIONS['seed'] = randint(0, 1000000)
+    seed_everything(OPTIONS['seed'])
 
     # Logging
-    logger(vars(opt), log_csv = "logs/txt2img_logs.csv")
+    # logger(vars(OPTIONS), log_csv = "logs/txt2img_logs.csv")
 
-    sd = load_model_from_config(f"{opt.ckpt}")
+    sd = load_model_from_config(f"{OPTIONS['ckpt_path']}")
     li, lo = [], []
     for key, value in sd.items():
         sp = key.split(".")
@@ -101,40 +101,45 @@ def do_inference():
     model = instantiate_from_config(config.modelUNet)
     _, _ = model.load_state_dict(sd, strict=False)
     model.eval()
-    model.unet_bs = opt.unet_bs
-    model.cdevice = opt.device
-    model.turbo = opt.turbo
+    model.unet_bs = OPTIONS['unet_bs']
+    model.cdevice = OPTIONS['device']
+    model.turbo = OPTIONS['turbo']
 
     modelCS = instantiate_from_config(config.modelCondStage)
     _, _ = modelCS.load_state_dict(sd, strict=False)
     modelCS.eval()
-    modelCS.cond_stage_model.device = opt.device
+    modelCS.cond_stage_model.device = OPTIONS['device']
 
     modelFS = instantiate_from_config(config.modelFirstStage)
     _, _ = modelFS.load_state_dict(sd, strict=False)
     modelFS.eval()
     del sd
 
-    if opt.device != "cpu" and opt.precision == "autocast":
+    if OPTIONS['device'] != "cpu" and OPTIONS['precision'] == "autocast":
         model.half()
         modelCS.half()
 
     start_code = None
-    if opt.fixed_code:
-        start_code = torch.randn([opt.n_samples, opt.C, opt.H // opt.f, opt.W // opt.f], device=opt.device)
+    if OPTIONS['fixed_code']:
+        start_code = torch.randn(
+            [OPTIONS['n_samples'], 
+            OPTIONS['latent_channels'], 
+            OPTIONS['image_height'] // OPTIONS['downsample_factor'], 
+            OPTIONS['image_width'] // OPTIONS['downsample_factor']], 
+            device=OPTIONS['device'])
 
 
-    batch_size = opt.n_samples
-    n_rows = opt.n_rows if opt.n_rows > 0 else batch_size
-    if not opt.from_file:
-        assert opt.prompt is not None
-        prompt = opt.prompt
+    batch_size = OPTIONS['n_samples']
+    n_rows = OPTIONS['n_rows'] if OPTIONS['n_rows'] > 0 else batch_size
+    if not OPTIONS['prompts_file']:
+        assert OPTIONS['prompt'] is not None
+        prompt = OPTIONS['prompt']
         print(f"Using prompt: {prompt}")
         data = [batch_size * [prompt]]
 
     else:
-        print(f"reading prompts from {opt.from_file}")
-        with open(opt.from_file, "r") as f:
+        print(f"reading prompts from {OPTIONS['prompts_file']}")
+        with open(OPTIONS['prompts_file'], "r") as f:
             text = f.read()
             print(f"Using prompt: {text.strip()}")
             data = text.splitlines()
@@ -142,7 +147,7 @@ def do_inference():
             data = list(chunk(sorted(data), batch_size))
 
 
-    if opt.precision == "autocast" and opt.device != "cpu":
+    if OPTIONS['precision'] == "autocast" and OPTIONS['device'] != "cpu":
         precision_scope = autocast
     else:
         precision_scope = nullcontext
@@ -151,7 +156,7 @@ def do_inference():
     with torch.no_grad():
 
         all_samples = list()
-        for n in trange(opt.n_iter, desc="Sampling"):
+        for n in trange(OPTIONS['n_iter'], desc="Sampling"):
             for prompts in tqdm(data, desc="data"):
 
                 sample_path = os.path.join(outpath, "_".join(re.split(":| ", prompts[0])))[:150]
@@ -159,9 +164,9 @@ def do_inference():
                 base_count = len(os.listdir(sample_path))
 
                 with precision_scope("cuda"):
-                    modelCS.to(opt.device)
+                    modelCS.to(OPTIONS['device'])
                     uc = None
-                    if opt.scale != 1.0:
+                    if OPTIONS['scale'] != 1.0:
                         uc = modelCS.get_learned_conditioning(batch_size * [""])
                     if isinstance(prompts, tuple):
                         prompts = list(prompts)
@@ -179,28 +184,33 @@ def do_inference():
                     else:
                         c = modelCS.get_learned_conditioning(prompts)
 
-                    shape = [opt.n_samples, opt.C, opt.H // opt.f, opt.W // opt.f]
+                    shape = [
+                        OPTIONS['n_samples'], 
+                        OPTIONS['latent_channels'], 
+                        OPTIONS['image_height'] // OPTIONS['downsample_factor'], 
+                        OPTIONS['image_width'] // OPTIONS['downsample_factor']
+                    ]
 
-                    if opt.device != "cpu":
+                    if OPTIONS['device'] != "cpu":
                         mem = torch.cuda.memory_allocated() / 1e6
                         modelCS.to("cpu")
                         while torch.cuda.memory_allocated() / 1e6 >= mem:
                             time.sleep(1)
 
                     samples_ddim = model.sample(
-                        S=opt.ddim_steps,
+                        S=OPTIONS['ddim_steps'],
                         conditioning=c,
-                        seed=opt.seed,
+                        seed=OPTIONS['seed'],
                         shape=shape,
                         verbose=False,
-                        unconditional_guidance_scale=opt.scale,
+                        unconditional_guidance_scale=OPTIONS['scale'],
                         unconditional_conditioning=uc,
-                        eta=opt.ddim_eta,
+                        eta=OPTIONS['ddim_eta'],
                         x_T=start_code,
-                        sampler = opt.sampler,
+                        sampler = OPTIONS['sampler'],
                     )
 
-                    modelFS.to(opt.device)
+                    modelFS.to(OPTIONS['device'])
 
                     print(samples_ddim.shape)
                     print("saving images")
@@ -210,13 +220,13 @@ def do_inference():
                         x_sample = torch.clamp((x_samples_ddim + 1.0) / 2.0, min=0.0, max=1.0)
                         x_sample = 255.0 * rearrange(x_sample[0].cpu().numpy(), "c h w -> h w c")
                         Image.fromarray(x_sample.astype(np.uint8)).save(
-                            os.path.join(sample_path, "seed_" + str(opt.seed) + "_" + f"{base_count:05}.{opt.format}")
+                            os.path.join(sample_path, "seed_" + str(OPTIONS['seed']) + "_" + f"{base_count:05}.{OPTIONS['format']}")
                         )
-                        seeds += str(opt.seed) + ","
-                        opt.seed += 1
+                        seeds += str(OPTIONS['seed']) + ","
+                        OPTIONS['seed'] += 1
                         base_count += 1
 
-                    if opt.device != "cpu":
+                    if OPTIONS['device'] != "cpu":
                         mem = torch.cuda.memory_allocated() / 1e6
                         modelFS.to("cpu")
                         while torch.cuda.memory_allocated() / 1e6 >= mem:
