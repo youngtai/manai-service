@@ -142,7 +142,7 @@ def do_inference(prompt):
     for key in lo:
         sd["model2." + key[6:]] = sd.pop(key)
 
-    config = OmegaConf.load(f"{config}")
+    config = OmegaConf.load(f"{CONFIG}")
 
     model = instantiate_from_config(config.modelUNet)
     _, _ = model.load_state_dict(sd, strict=False)
