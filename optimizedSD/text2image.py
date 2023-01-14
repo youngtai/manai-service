@@ -17,9 +17,9 @@ from ldm.util import instantiate_from_config
 # from samplers import CompVisDenoiser
 # logging.set_verbosity_error()
 
-PRECISION = {'full', 'autocast'}
-FORMATS = {'png', 'jpg'}
-SAMPLERS = {'ddim', 'plms','heun', 'euler', 'euler_a', 'dpm2', 'dpm2_a', 'lms'}
+PRECISION = {'full': 'full', 'autocast': 'autocast'}
+FORMATS = {'png': 'png', 'jpg': 'jpg'}
+SAMPLERS = {'ddim': 'ddim', 'plms': 'plms','heun': 'heun', 'euler': 'euler', 'euler_a': 'euler_a', 'dpm2': 'dpm2', 'dpm2_a': 'dpm2_a', 'lms': 'lms'}
 CONFIG = 'optimizedSD/v1-inference.yaml'
 BASE_CKPT_PATH = '/home/youngtai/dev/models/sd-v1-4-full-ema.ckpt' # TODO Change to something generic for remote machines
 OPTIONS = {
