@@ -22,6 +22,7 @@ FORMATS = {'png': 'png', 'jpg': 'jpg'}
 SAMPLERS = {'ddim': 'ddim', 'plms': 'plms','heun': 'heun', 'euler': 'euler', 'euler_a': 'euler_a', 'dpm2': 'dpm2', 'dpm2_a': 'dpm2_a', 'lms': 'lms'}
 CONFIG = 'optimizedSD/v1-inference.yaml'
 BASE_CKPT_PATH = '/home/youngtai/dev/models/sd-v1-4-full-ema.ckpt' # TODO Change to something generic for remote machines
+# BASE_CKPT_PATH = '/media/youngtai/ssd-data/logs/2022-11-20T23-32-53_art/checkpoints/epoch=000357.ckpt'
 OPTIONS = {
     'prompt': None,
     'outdir': 'outputs/text2image-samples',
@@ -45,7 +46,7 @@ OPTIONS = {
     'turbo': True,
     'precision': PRECISION['autocast'],
     'format': FORMATS['png'],
-    'sampler': SAMPLERS['ddim'],
+    'sampler': SAMPLERS['plms'],
     'ckpt_path': BASE_CKPT_PATH
 }
 

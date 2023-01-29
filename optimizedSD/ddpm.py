@@ -487,7 +487,6 @@ class UNet(DDPM):
                unconditional_conditioning=None,
                ):
         
-
         if(self.turbo):
             self.model1.to(self.cdevice)
             self.model2.to(self.cdevice)
