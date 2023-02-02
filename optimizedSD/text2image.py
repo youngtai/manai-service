@@ -22,7 +22,8 @@ FORMATS = {'png': 'png', 'jpg': 'jpg'}
 SAMPLERS = {'ddim': 'ddim', 'plms': 'plms','heun': 'heun', 'euler': 'euler', 'euler_a': 'euler_a', 'dpm2': 'dpm2', 'dpm2_a': 'dpm2_a', 'lms': 'lms'}
 CONFIG = 'optimizedSD/v1-inference.yaml'
 BASE_CKPT_PATH = '/home/youngtai/dev/models/sd-v1-4-full-ema.ckpt' # TODO Change to something generic for remote machines
-# BASE_CKPT_PATH = '/media/youngtai/ssd-data/logs/2022-11-20T23-32-53_art/checkpoints/epoch=000357.ckpt'
+CKPT_PREFIX = '/media/youngtai/ssd-data/logs/2022-11-20T23-32-53_art/checkpoints/'
+# BASE_CKPT_PATH = '/media/youngtai/ssd-data/logs/2022-11-20T23-32-53_art/checkpoints/epoch=000214.ckpt'
 OPTIONS = {
     'prompt': None,
     'outdir': 'outputs/text2image-samples',
@@ -36,7 +37,7 @@ OPTIONS = {
     'image_width': 512,
     'latent_channels': 4,
     'downsample_factor': 8,
-    'n_samples': 5,
+    'n_samples': 4,
     'n_rows': 0,
     'scale': 7.5,
     'device': 'cuda',
@@ -111,8 +112,12 @@ def load_model_from_config(ckpt, verbose=False):
     return sd
 
 
-def do_inference(prompt):
+def do_inference(prompt, width, height, ckpt, samples):
     tic = time.time()
+    OPTIONS['image_width'] = int(width)
+    OPTIONS['image_height'] = int(height)
+    OPTIONS['n_samples'] = int(samples)
+    OPTIONS['ckpt_path'] =  BASE_CKPT_PATH if ckpt == 'base' else f'{CKPT_PREFIX}{ckpt}'
     OPTIONS['prompt'] = prompt
     os.makedirs(OPTIONS['outdir'], exist_ok=True)
     outpath = OPTIONS['outdir']
