@@ -1,4 +1,7 @@
 import os, re
+import io
+import json
+import datetime
 import torch
 import numpy as np
 from random import randint
@@ -12,7 +15,7 @@ from pytorch_lightning import seed_everything
 from torch import autocast
 from contextlib import contextmanager, nullcontext
 from ldm.util import instantiate_from_config
-# from optimUtils import split_weighted_subprompts
+from .optimUtils import split_weighted_subprompts
 # from transformers import logging
 # from samplers import CompVisDenoiser
 # logging.set_verbosity_error()
@@ -22,8 +25,9 @@ FORMATS = {'png': 'png', 'jpg': 'jpg'}
 SAMPLERS = {'ddim': 'ddim', 'plms': 'plms','heun': 'heun', 'euler': 'euler', 'euler_a': 'euler_a', 'dpm2': 'dpm2', 'dpm2_a': 'dpm2_a', 'lms': 'lms'}
 CONFIG = 'optimizedSD/v1-inference.yaml'
 BASE_CKPT_PATH = '/home/youngtai/dev/models/sd-v1-4-full-ema.ckpt' # TODO Change to something generic for remote machines
+NAI_CKPT_PATH = '/home/youngtai/dev/novelaileak/stableckpt/animefull-final-pruned/nai-animefull-final-pruned.ckpt'
+DREAMSHAPER_CKPT_PATH = '/home/youngtai/dev/models/dreamshaper_332BakedVaeClipFix.safetensors'
 CKPT_PREFIX = '/media/youngtai/ssd-data/logs/2022-11-20T23-32-53_art/checkpoints/'
-# BASE_CKPT_PATH = '/media/youngtai/ssd-data/logs/2022-11-20T23-32-53_art/checkpoints/epoch=000214.ckpt'
 OPTIONS = {
     'prompt': None,
     'outdir': 'outputs/text2image-samples',
@@ -52,72 +56,70 @@ OPTIONS = {
 }
 
 
-def split_weighted_subprompts(text):
-    """
-    grabs all text up to the first occurrence of ':' 
-    uses the grabbed text as a sub-prompt, and takes the value following ':' as weight
-    if ':' has no value defined, defaults to 1.0
-    repeats until no text remaining
-    """
-    remaining = len(text)
-    prompts = []
-    weights = []
-    while remaining > 0:
-        if ":" in text:
-            idx = text.index(":") # first occurrence from start
-            # grab up to index as sub-prompt
-            prompt = text[:idx]
-            remaining -= idx
-            # remove from main text
-            text = text[idx+1:]
-            # find value for weight 
-            if " " in text:
-                idx = text.index(" ") # first occurence
-            else: # no space, read to end
-                idx = len(text)
-            if idx != 0:
-                try:
-                    weight = float(text[:idx])
-                except: # couldn't treat as float
-                    print(f"Warning: '{text[:idx]}' is not a value, are you missing a space?")
-                    weight = 1.0
-            else: # no value found
-                weight = 1.0
-            # remove from main text
-            remaining -= idx
-            text = text[idx+1:]
-            # append the sub-prompt and its weight
-            prompts.append(prompt)
-            weights.append(weight)
-        else: # no : found
-            if len(text) > 0: # there is still text though
-                # take remainder as weight 1
-                prompts.append(text)
-                weights.append(1.0)
-            remaining = 0
-    return prompts, weights
-
-
 def chunk(it, size):
     it = iter(it)
     return iter(lambda: tuple(islice(it, size)), ())
 
 
-def load_model_from_config(ckpt, verbose=False):
-    print(f'Loading model from {ckpt}')
-    pl_sd = torch.load(ckpt, map_location='cpu')
-    if 'global_step' in pl_sd:
-        print(f"Global Step: {pl_sd['global_step']}")
-    sd = pl_sd['state_dict']
+chckpoint_dict_replacements = {
+    'cond_stage_model.transformer.embeddings.': 'cond_stage_model.transformer.text_model.embeddings.',
+    'cond_stage_model.transformer.encoder.': 'cond_stage_model.transformer.text_model.encoder.',
+    'cond_stage_model.transformer.final_layer_norm.': 'cond_stage_model.transformer.text_model.final_layer_norm.',
+}
+
+
+def transform_checkpoint_dict_key(k):
+    for text, replacement in chckpoint_dict_replacements.items():
+        if k.startswith(text):
+            k = replacement + k[len(text):]
+    return k
+
+
+def get_state_dict_from_checkpoint(pl_sd):
+    if "state_dict" in pl_sd:
+        pl_sd = pl_sd["state_dict"]
+    sd = {}
+    for k, v in pl_sd.items():
+        new_key = transform_checkpoint_dict_key(k)
+        if new_key is not None:
+            sd[new_key] = v
+    pl_sd.clear()
+    pl_sd.update(sd)
+    return pl_sd
+
+
+def load_ckpt(ckpt):
+    if ckpt.endswith(".safetensors"):
+        try:
+            from safetensors.torch import load_file
+        except ImportError as e:
+            raise ImportError(f"The model is in safetensors format and it is not installed, use 'pip install safetensors': {e}")
+        pl_sd = load_file(ckpt, device='cpu')
+        if 'global_step' in pl_sd:
+            print(f"Global Step: {pl_sd['global_step']}")
+        sd = get_state_dict_from_checkpoint(pl_sd)
+    else:
+        pl_sd = torch.load(ckpt, map_location='cpu')
+        if 'global_step' in pl_sd:
+            print(f"Global Step: {pl_sd['global_step']}")
+        sd = get_state_dict_from_checkpoint(pl_sd)
     return sd
 
 
-def do_inference(prompt, width, height, ckpt, samples):
+def load_model_from_config(ckpt, verbose=False):
+    print(f'Loading model from {ckpt}')
+    sd = load_ckpt(ckpt)
+    return sd
+
+
+def do_inference(prompt, width, height, ckpt, samples, sampler, seed):
     tic = time.time()
     OPTIONS['image_width'] = int(width)
     OPTIONS['image_height'] = int(height)
     OPTIONS['n_samples'] = int(samples)
-    OPTIONS['ckpt_path'] =  BASE_CKPT_PATH if ckpt == 'base' else f'{CKPT_PREFIX}{ckpt}'
+    OPTIONS['sampler'] = sampler
+    OPTIONS['seed'] = None if seed is None else int(seed)
+    OPTIONS['ckpt_path'] =  BASE_CKPT_PATH if ckpt == 'base' else NAI_CKPT_PATH if ckpt == 'nai' else DREAMSHAPER_CKPT_PATH if ckpt == 'dreamshaper' else f'{CKPT_PREFIX}{ckpt}'
     OPTIONS['prompt'] = prompt
     os.makedirs(OPTIONS['outdir'], exist_ok=True)
     outpath = OPTIONS['outdir']
@@ -205,6 +207,7 @@ def do_inference(prompt, width, height, ckpt, samples):
         precision_scope = nullcontext
 
     generated_images = []
+    images_details = []
 
     seeds = ""
     with torch.no_grad():
@@ -213,9 +216,11 @@ def do_inference(prompt, width, height, ckpt, samples):
         for n in trange(OPTIONS['n_iter'], desc="Sampling"):
             for prompts in tqdm(data, desc="data"):
 
-                sample_path = os.path.join(outpath, "_".join(re.split(":| ", prompts[0])))[:150]
-                os.makedirs(sample_path, exist_ok=True)
-                base_count = len(os.listdir(sample_path))
+                # sample_path = os.path.join(outpath, "_".join(re.split(":| ", prompts[0])))[:150]
+                # os.makedirs(sample_path, exist_ok=True)
+                # base_count = len(os.listdir(sample_path))
+                os.makedirs(outpath, exist_ok=True)
+                base_count = len(os.listdir(outpath))
 
                 with precision_scope("cuda"):
                     modelCS.to(OPTIONS['device'])
@@ -226,6 +231,10 @@ def do_inference(prompt, width, height, ckpt, samples):
                         prompts = list(prompts)
 
                     subprompts, weights = split_weighted_subprompts(prompts[0])
+                    print('Subprompts:')
+                    print(subprompts)
+                    print('Weights:')
+                    print(weights)
                     if len(subprompts) > 1:
                         c = torch.zeros_like(uc)
                         totalWeight = sum(weights)
@@ -273,10 +282,20 @@ def do_inference(prompt, width, height, ckpt, samples):
                         x_samples_ddim = modelFS.decode_first_stage(samples_ddim[i].unsqueeze(0))
                         x_sample = torch.clamp((x_samples_ddim + 1.0) / 2.0, min=0.0, max=1.0)
                         x_sample = 255.0 * rearrange(x_sample[0].cpu().numpy(), "c h w -> h w c")
-                        save_path = os.path.join(sample_path, "seed_" + str(OPTIONS['seed']) + "_" + f"{base_count:05}.{OPTIONS['format']}")
+                        filename_base = "seed_" + str(OPTIONS['seed']) + f"_sample{i}_{base_count:05}"
+                        filename = f"{filename_base}.{OPTIONS['format']}"
+                        save_path = os.path.join(outpath, filename)
                         image = Image.fromarray(x_sample.astype(np.uint8))
                         generated_images.append(image)
-                        image.save(save_path) # TODO Remove this unless using locally
+                        image.save(save_path)
+                        
+                        formatted_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        details = {'filename': filename, 'prompt': prompt, 'ckpt': ckpt, 'sampler': sampler, 'seed': seed, 'created': formatted_time}
+                        images_details.append(details)
+                        details_file_save_path = os.path.join(outpath, f"{filename_base}.json")
+                        with open(details_file_save_path, 'w') as f:
+                            json.dump(details, f)
+
                         seeds += str(OPTIONS['seed']) + ","
                         OPTIONS['seed'] += 1
                         base_count += 1
@@ -296,10 +315,10 @@ def do_inference(prompt, width, height, ckpt, samples):
     print(
         (
             "Samples finished in {0:.2f} minutes and exported to "
-            + sample_path
+            + outpath
             + "\n Seeds used = "
             + seeds[:-1]
         ).format(time_taken)
     )
 
-    return generated_images
+    return generated_images, images_details

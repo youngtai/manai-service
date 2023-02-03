@@ -1,4 +1,5 @@
-from flask import Flask, request, make_response, send_file
+from flask import Flask, request, make_response
+import datetime
 from optimizedSD.text2image import do_inference
 from werkzeug.utils import secure_filename
 import zipfile
@@ -38,8 +39,10 @@ def inference():
     width = request.args.get('w', '512')
     height = request.args.get('h', '512')
     samples = request.args.get('samples', 4)
+    sampler = request.args.get('sampler', 'plms')
+    seed = request.args.get('seed', None)
     image_prompt = request.get_data(as_text=True)
-    generated_images = do_inference(image_prompt, width, height, ckpt, samples)
+    generated_images, images_details = do_inference(image_prompt, width, height, ckpt, samples, sampler, seed)
     print(f'Images created for "{image_prompt}"')
     
     in_memory_zip = io.BytesIO()
@@ -49,7 +52,8 @@ def inference():
             image.save(image_file, 'PNG')
             image_file.seek(0)
             zip.writestr(f'image-{i}.png', image_file.read())
-        details = {'prompt': image_prompt, 'ckpt': ckpt}
+        # details = {'prompt': image_prompt, 'ckpt': ckpt, 'sampler': sampler, 'seed': seed}
+        details = images_details[i]
         details_file = io.StringIO()
         for key, value in details.items():
             details_file.write(f'{key}: {value}\n')
@@ -58,7 +62,7 @@ def inference():
     
     in_memory_zip.seek(0)
     response = make_response(in_memory_zip.read())
-    response.headers["Content-Disposition"] = f"attachment; filename={image_prompt} images.zip"
+    response.headers["Content-Disposition"] = f"attachment; filename=generated-images.zip"
     response.mimetype = 'application/zip'
 
     return response
