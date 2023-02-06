@@ -215,12 +215,10 @@ def do_inference(prompt, width, height, ckpt, samples, sampler, seed):
         all_samples = list()
         for n in trange(OPTIONS['n_iter'], desc="Sampling"):
             for prompts in tqdm(data, desc="data"):
-
-                # sample_path = os.path.join(outpath, "_".join(re.split(":| ", prompts[0])))[:150]
-                # os.makedirs(sample_path, exist_ok=True)
-                # base_count = len(os.listdir(sample_path))
                 os.makedirs(outpath, exist_ok=True)
-                base_count = len(os.listdir(outpath))
+                files_in_outpath = os.listdir(outpath)
+                filtered_files = [file for file in files_in_outpath if file.endswith('.png')]
+                base_count = len(filtered_files)
 
                 with precision_scope("cuda"):
                     modelCS.to(OPTIONS['device'])
