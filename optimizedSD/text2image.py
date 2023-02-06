@@ -30,7 +30,7 @@ DREAMSHAPER_CKPT_PATH = '/home/youngtai/dev/models/dreamshaper_332BakedVaeClipFi
 CKPT_PREFIX = '/media/youngtai/ssd-data/logs/2022-11-20T23-32-53_art/checkpoints/'
 OPTIONS = {
     'prompt': None,
-    'outdir': 'outputs/text2image-samples',
+    'outdir': 'outputs',
     'skip_grid': True,
     'skip_save': True,
     'ddim_steps': 50,
